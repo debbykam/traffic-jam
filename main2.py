@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 from tracker import *
+import requests
+
 
 CAP = cv2.VideoCapture("video.mp4")
 Frame = None
@@ -36,60 +38,59 @@ def Counting_line(event, x, y, flag, args):
             counting_line =[]
         cv2.imshow("select coutning line", Frame_line)
 
-# def model_Prediction(net,imgs):
-#
-#     car_list =[]
-#     for img in imgs:
-#
-#         # imgv2 = cv2.resize(img, None, fx=0.4, fy=0.4)
-#         height, width, channels = img.shape
-#         blob = cv2.dnn.blobFromImage(img, 1 / 255, (416, 416), (0, 0, 0), swapRB=True, crop=False)
-#         net.setInput(blob)
-#         output_layers_name = net.getUnconnectedOutLayersNames()
-#
-#         outs = net.forward(output_layers_name)
-#
-#         # Showing informations on the screen
-#         class_ids = []
-#         confidences = []
-#         boxes = []
-#         for out in outs:
-#             for detection in out:
-#                 scores = detection[5:]
-#                 class_id = np.argmax(scores)
-#                 confidence = scores[class_id]
-#                 if confidence > 0.5:
-#                     # Object detected
-#
-#                     center_x = int(detection[0] * width)
-#                     center_y = int(detection[1] * height)
-#                     w = int(detection[2] * width)
-#                     h = int(detection[3] * height)
-#
-#                     # Rectangle coordinates
-#                     x = int(center_x - w / 2)
-#                     y = int(center_y - h / 2)
-#
-#                     boxes.append([x, y, w, h])
-#                     confidences.append(float(confidence))
-#                     class_ids.append(class_id)
-#
-#         indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.2, 0.4)
-#
-#         font = cv2.FONT_HERSHEY_PLAIN
-#
-#         if len(indexes) > 0:
-#             for i in indexes.flatten():
-#                 if i in [2, 3, 5, 7]:
-#                     x, y, w, h = boxes[i]
-#                     car_list.append([x,y,w,h])
-#
-#
-#     return car_list
 
 
+def model_Prediction(net,img):
+
+    car_list =[]
 
 
+    imgv2 = cv2.resize(img, None, fx=0.4, fy=0.4)
+    height, width, channels = img.shape
+    blob = cv2.dnn.blobFromImage(img, 1 / 255, (416, 416), (0, 0, 0), swapRB=True, crop=False)
+    net.setInput(blob)
+    output_layers_name = net.getUnconnectedOutLayersNames()
+
+    outs = net.forward(output_layers_name)
+
+ # Showing informations on the screen
+    class_ids = []
+    confidences = []
+    boxes = []
+    for out in outs:
+        for detection in out:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            if confidence > 0.5:
+                    # Object detected
+
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+
+                    # Rectangle coordinates
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
+
+        indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.2, 0.4)
+
+        font = cv2.FONT_HERSHEY_PLAIN
+
+        if len(indexes) > 0:
+            for i in indexes.flatten():
+                if i in [2, 3, 5, 7]:
+                    x, y, w, h = boxes[i]
+                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,251),thickness=2)
+                    car_list.append([x,y,w,h])
+
+
+    return img, len(car_list)
 
 
 def roi(img):
@@ -143,50 +144,56 @@ def DrawContours(mask,img):
 
 def main():
     global Frame,Frame_line,move_list,numbers_cars
-    tracker = EuclideanDistTracker()
-    subtractor = cv2.createBackgroundSubtractorKNN(history=100, detectShadows=False)
+    # tracker = EuclideanDistTracker()
+    # subtractor = cv2.createBackgroundSubtractorKNN(history=100, detectShadows=False)
 
-    is_sucsses, Frame = CAP.read()
-    ## version 1, read from video stream
+    while True:
+        imageLink = "https://public.highwaystrafficcameras.co.uk/cctvpublicaccess/images/52660"
+        filename = "image_1"
+        # download image using GET
+        rawImage = requests.get(imageLink, stream=True)
+        # save the image received into the file
+        with open(filename, 'wb') as fd:
+            for chunk in rawImage.iter_content(chunk_size=1024):
+                fd.write(chunk)
+        Frame= rawImage
+        Frame, number_of_cars = model_Prediction(Frame)
 
-    # Frame_line = roi(Frame)
-    # cv2.imshow("select coutning line", Frame_line)
-    # cv2.setMouseCallback("select coutning line", Counting_line)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+
+        # Frame_line = roi(Frame)
+        # cv2.imshow("select coutning line", Frame_line)
+        # cv2.setMouseCallback("select coutning line", Counting_line)
+        cv2.waitKey(10000)
+    cv2.destroyAllWindows()
 
 
-    while is_sucsses:
 
-        is_sucsses, Frame = CAP.read()
+    sumCars = 0
+    roiL = roi(Frame)
+    h,w,_ = roiL.shape
+    new_frame = Frame[RminY:720, RminX:650]
 
-        if is_sucsses != True:
-            break
-        sumCars = 0
-        roiL = roi(Frame)
-        h,w,_ = roiL.shape
-        new_frame = Frame[RminY:720, RminX:650]
+    mask = subtractor.apply(roiL)
+    _, mask = cv2.threshold(mask, 245, 255, cv2.THRESH_BINARY)
+    DrawContours(mask,roiL)
 
-        mask = subtractor.apply(roiL)
-        _, mask = cv2.threshold(mask, 245, 255, cv2.THRESH_BINARY)
-        DrawContours(mask,roiL)
 
         # if len(move_list) > 0:
         # 	car_list = model_Prediction(net,move_list)
-        if len(move_list)>0:
-            box_id = tracker.update(move_list)
-            for box in box_id:
-                x, y, w, h, id = box
-                sumCars = id
-                y_center = (y + y + h) // 2
-                cv2.rectangle(roiL, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(roiL, str(id), (x, y - 15), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 2)
+    if len(move_list)>0:
+        box_id = tracker.update(move_list)
+        for box in box_id:
+            x, y, w, h, id = box
+            sumCars = id
+            y_center = (y + y + h) // 2
+            cv2.rectangle(roiL, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(roiL, str(id), (x, y - 15), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 2)
 
 
 
-        if sumCars > numbers_cars:
-            numbers_cars = sumCars
-            print(f" sum cars {numbers_cars}")
+    if sumCars > numbers_cars:
+        numbers_cars = sumCars
+        print(f" sum cars {numbers_cars}")
 
         cv2.imshow("roi", roiL)
         cv2.imshow("origenl_Frame", new_frame)
@@ -216,13 +223,13 @@ def findborders():
     RminY = minY
 
 if __name__ == '__main__':
-    is_sucsses, Frame = CAP.read()
-    cv2.imshow("select_ROI", Frame)
-    Frame_rest = Frame.copy()
-    cv2.setMouseCallback("select_ROI", ROI)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    findborders()
+   # is_sucsses, Frame = CAP.read()
+   #  cv2.imshow("select_ROI", Frame)
+   #  Frame_rest = Frame.copy()
+   #  cv2.setMouseCallback("select_ROI", ROI)
+   #  cv2.waitKey(0)
+   #  cv2.destroyAllWindows()
+   #  findborders()
     main()
 
 
