@@ -147,6 +147,7 @@ def main():
     subtractor = cv2.createBackgroundSubtractorKNN(history=100, detectShadows=False)
 
     is_sucsses, Frame = CAP.read()
+    ## version 1, read from video stream
 
     # Frame_line = roi(Frame)
     # cv2.imshow("select coutning line", Frame_line)
